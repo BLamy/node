@@ -1058,6 +1058,21 @@ Variable* DeclarationScope::DeclareParameter(const AstRawString* name,
   if (name == ast_value_factory->arguments_string()) {
     set_has_arguments_parameter(true);
   }
+  // While replaying, force all variables to be context-allocated.
+  // Ideally we'd only do this for non-leaf functions, but it's not
+  // immediately obvious how to do that at this level.
+  // (RUN-2604)
+  if (recordreplay::IsReplaying() &&
+      recordreplay::FeatureEnabled("force-variable-context-allocation")) {
+    // MustAllocate() requires that anything forced into the context is also
+    // used, and a parameter the function never mentions is not: V8 used to
+    // mark every parameter used here, but now only does so for a function
+    // that reaches them through `arguments`, after AllocateParameterLocals()
+    // has already dropped an unused `arguments`. Mark it as V8 does for
+    // mapped arguments, which forces allocation the same way.
+    var->set_is_used();
+    var->ForceContextAllocation();
+  }
   return var;
 }
 
@@ -1189,6 +1204,20 @@ Variable* Scope::DeclareVariable(
   // lead to repeated DeclareEvalVar or DeclareEvalFunction calls.
   decls_.Add(declaration);
   declaration->set_var(var);
+
+  // While replaying, force all variables to be context-allocated.
+  // Ideally we'd only do this for non-leaf functions, but it's not
+  // immediately obvious how to do that at this level.
+  // (RUN-2604)
+  if (recordreplay::IsReplaying() &&
+      recordreplay::FeatureEnabled("force-variable-context-allocation") &&
+      (kind == VariableKind::NORMAL_VARIABLE ||
+       kind == VariableKind::SLOPPY_BLOCK_FUNCTION_VARIABLE)) {
+    // Same as above: a declaration nothing refers to is not used, and
+    // MustAllocate() CHECKs that a forced variable is.
+    var->set_is_used();
+    var->ForceContextAllocation();
+  }
   return var;
 }
 
