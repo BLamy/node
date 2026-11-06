@@ -6,10 +6,13 @@
 #include "node.h"
 #include "node_external_reference.h"
 #include "node_internals.h"
+#include "node_record_replay_protocol.h"
+#include "node_version.h"
 #include "replayio.h"
 #include "util-inl.h"
 #include "v8-inspector.h"
 #include "v8.h"
+#include "v8-version.h"
 
 #include <dlfcn.h>
 #include <unistd.h>
@@ -178,6 +181,27 @@ static void RecordReplayLoadSymbol(void* handle, const char* name, T& function) 
 extern char gBuildId[];
 extern char gRecordReplayDriver[];
 extern int gRecordReplayDriverSize;
+extern "C" void OPENSSL_cpuid_setup(void);
+
+static ReplayNodeRuntimeDescriptor CompiledNodeRuntimeDescriptor() {
+  return {sizeof(ReplayNodeRuntimeDescriptor), REPLAY_NODE_RUNTIME_PROTOCOL,
+          NODE_MAJOR_VERSION, NODE_MINOR_VERSION, NODE_PATCH_VERSION,
+          NODE_MODULE_VERSION, V8_MAJOR_VERSION, NAPI_VERSION};
+}
+
+// The packaging tool can inspect native capabilities without starting capture
+// or evaluating application JavaScript.
+void PrintRecordReplayRuntimeInfo() {
+  const auto runtime = CompiledNodeRuntimeDescriptor();
+  printf("{\"schema\":1,\"kind\":\"node\",\"version\":\"%u.%u.%u\","
+         "\"moduleABI\":%u,\"v8Major\":%u,\"napiVersion\":%u,"
+         "\"nativeProtocol\":%u,\"strategy\":\"%s\",\"buildId\":\"%s\","
+         "\"needsExitAdapter\":%s}\n",
+         runtime.major, runtime.minor, runtime.patch, runtime.moduleABI,
+         runtime.v8Major, runtime.napiVersion, runtime.protocol,
+         ReplayNodeRuntimeStrategyName(runtime.major), gBuildId,
+         ReplayNodeRuntimeNeedsExitAdapter(runtime.major) ? "true" : "false");
+}
 
 static std::string GetRecordingMetadata(int argc, char** argv) {
   std::vector<void*> handles;
@@ -264,7 +288,22 @@ void InitializeRecordReplay(int* pargc, char*** pargv) {
 
   if (!handle) {
     fprintf(stderr, "Loading Record Replay driver failed (%s).\n", dlerror());
-    return;
+    exit(78);
+  }
+
+  // Node 16 keeps compatibility with existing drivers. Newer Node strategies
+  // require the explicit version/ABI handshake before any recording starts.
+  ReplayConfigureNodeRuntime configureNode = nullptr;
+  if (void* symbol = dlsym(handle, "RecordReplayConfigureNodeRuntime")) {
+    CastPointer(symbol, &configureNode);
+  }
+  const ReplayNodeRuntimeDescriptor runtime = CompiledNodeRuntimeDescriptor();
+  const char* refusal = configureNode ? configureNode(&runtime) :
+    (ReplayNodeRuntimeAllowsLegacyDriver(NODE_MAJOR_VERSION) ? nullptr :
+      "This Node version requires a version-aware Replay driver");
+  if (refusal) {
+    fprintf(stderr, "Replay Node runtime refused: %s\n", refusal);
+    exit(78);
   }
 
   RecordReplayLoadSymbol(handle, "RecordReplayAttach", gRecordReplayAttach);
@@ -303,6 +342,9 @@ void InitializeRecordReplay(int* pargc, char*** pargv) {
     if (gRecordReplayAddMetadata) {
       std::string metadata = GetRecordingMetadata(*pargc, *pargv);
       gRecordReplayAddMetadata(metadata.c_str());
+    }
+    if (ReplayNodeRuntimeDefersCryptoInitialization(runtime.major)) {
+      OPENSSL_cpuid_setup();
     }
   }
 }

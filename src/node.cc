@@ -985,6 +985,7 @@ int InitializeNodeWithArgs(std::vector<std::string>* argv,
 extern char gBuildId[];
 void InitializeRecordReplay(int* pargc, char*** pargv);
 void ApplyRecordReplayMaxOldSpace();
+void PrintRecordReplayRuntimeInfo();
 
 InitializationResult InitializeOncePerProcess(int argc, char** argv) {
   return InitializeOncePerProcess(argc, argv, kDefaultInitialization);
@@ -1166,6 +1167,10 @@ void TearDownOncePerProcess() {
 }
 
 int Start(int argc, char** argv) {
+  if (argc == 2 && !strcmp(argv[1], "--record-replay-runtime-info")) {
+    PrintRecordReplayRuntimeInfo();
+    return 0;
+  }
   InitializationResult result = InitializeOncePerProcess(argc, argv);
   if (result.early_return) {
     return result.exit_code;
