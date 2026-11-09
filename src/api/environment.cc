@@ -6,6 +6,7 @@
 #include "node_platform.h"
 #include "node_v8_platform-inl.h"
 #include "uv.h"
+#include <cstdlib>
 
 #if HAVE_INSPECTOR
 #include "inspector/worker_inspector.h"  // ParentInspectorHandle
@@ -751,7 +752,13 @@ ThreadId AllocateEnvironmentThreadId() {
 extern void RecordReplayFinishRecording();
 
 void DefaultProcessExitHandler(Environment* env, int exit_code) {
+  // Replay worker threads which run with events disallowed are intentionally
+  // not joined. Once the recording has been synchronously finished, terminate
+  // without running native teardown: deleting the V8 platform races their
+  // final GC bookkeeping, while ordinary exit handlers can take ordered locks
+  // after the recorder has stopped.
   RecordReplayFinishRecording();
+  if (recordreplay::IsRecordingFinished()) std::_Exit(exit_code);
   env->set_can_call_into_js(false);
   env->stop_sub_worker_contexts();
   DisposePlatform();
