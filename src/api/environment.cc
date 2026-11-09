@@ -750,6 +750,7 @@ ThreadId AllocateEnvironmentThreadId() {
 }
 
 extern void RecordReplayFinishRecording();
+extern void RecordReplayPrepareForImmediateExit();
 
 void DefaultProcessExitHandler(Environment* env, int exit_code) {
   // Replay worker threads which run with events disallowed are intentionally
@@ -758,7 +759,10 @@ void DefaultProcessExitHandler(Environment* env, int exit_code) {
   // final GC bookkeeping, while ordinary exit handlers can take ordered locks
   // after the recorder has stopped.
   RecordReplayFinishRecording();
-  if (recordreplay::IsRecordingFinished()) std::_Exit(exit_code);
+  if (recordreplay::IsRecordingFinished()) {
+    RecordReplayPrepareForImmediateExit();
+    std::_Exit(exit_code);
+  }
   env->set_can_call_into_js(false);
   env->stop_sub_worker_contexts();
   DisposePlatform();

@@ -58,6 +58,7 @@ static void (*gRecordReplaySaveRecording)(const char* dir);
 static void (*gRecordReplayRememberRecording)();
 static void (*gRecordReplayAddMetadata)(const char* metadata);
 static void (*gRecordReplayFinishRecording)();
+static void (*gRecordReplayPrepareForImmediateExit)();
 static void (*gBeginCallbackRegion)();
 static void (*gEndCallbackRegion)();
 static void (*gMarkNextDlopenAsAddon)(const char* name);
@@ -157,6 +158,12 @@ void RecordReplayFinishRecording() {
         fprintf(stderr, "Error: Could not open %s for adding recording ID", env);
       }
     }
+  }
+}
+
+void RecordReplayPrepareForImmediateExit() {
+  if (gRecordReplayPrepareForImmediateExit) {
+    gRecordReplayPrepareForImmediateExit();
   }
 }
 
@@ -315,6 +322,8 @@ void InitializeRecordReplay(int* pargc, char*** pargv) {
   RecordReplayLoadSymbol(handle, "RecordReplayRememberRecording", gRecordReplayRememberRecording);
   RecordReplayLoadSymbol(handle, "RecordReplayAddMetadata", gRecordReplayAddMetadata);
   RecordReplayLoadSymbol(handle, "RecordReplayFinishRecording", gRecordReplayFinishRecording);
+  RecordReplayLoadSymbol(handle, "RecordReplayPrepareForImmediateExit",
+                         gRecordReplayPrepareForImmediateExit);
   RecordReplayLoadSymbol(handle, "RecordReplayGetRecordingId", gRecordReplayGetRecordingId);
   RecordReplayLoadSymbol(handle, "RecordReplayGetUnusableRecordingReason", gGetUnusableRecordingReason);
   RecordReplayLoadSymbol(handle, "RecordReplayBeginCallbackRegion", gBeginCallbackRegion);
