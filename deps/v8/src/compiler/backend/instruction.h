@@ -486,7 +486,7 @@ class PendingOperand : public InstructionOperand {
 
 class LocationOperand : public InstructionOperand {
  public:
-  enum LocationKind { REGISTER, STACK_SLOT };
+  enum LocationKind : uint8_t { REGISTER, STACK_SLOT };
 
   LocationOperand(InstructionOperand::Kind operand_kind,
                   LocationOperand::LocationKind location_kind,
