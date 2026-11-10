@@ -256,7 +256,7 @@ FlagsCondition CommuteFlagsCondition(FlagsCondition condition);
 V8_EXPORT_PRIVATE std::ostream& operator<<(std::ostream& os,
                                            const FlagsCondition& fc);
 
-enum MemoryAccessMode {
+enum MemoryAccessMode : uint8_t {
   kMemoryAccessDirect = 0,
   kMemoryAccessProtected = 1,
 };
