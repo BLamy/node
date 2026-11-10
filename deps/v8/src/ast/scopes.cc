@@ -1188,6 +1188,9 @@ Variable* Scope::DeclareVariable(
       recordreplay::FeatureEnabled("force-variable-context-allocation") &&
       (kind == VariableKind::NORMAL_VARIABLE ||
        kind == VariableKind::SLOPPY_BLOCK_FUNCTION_VARIABLE)) {
+    // Scope::MustAllocate CHECKs that a context-allocated variable is used,
+    // and a declared variable may never be referenced (`var unused;`).
+    var->set_is_used();
     var->ForceContextAllocation();
   }
   return var;
