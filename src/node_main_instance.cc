@@ -1,4 +1,6 @@
 #include "node_main_instance.h"
+#include <cstdio>
+#include <cstdlib>
 #include <memory>
 #if HAVE_OPENSSL
 #include "crypto/crypto_util.h"
@@ -149,6 +151,18 @@ void NodeMainInstance::Run(int* exit_code, Environment* env) {
   }
 
   RecordReplayFinishRecording();
+#if defined(__APPLE__)
+  // On macOS, once the recording is finished the driver has let go of what its
+  // intercepted calls use, and the rest of exit still wakes threads that make
+  // them: exit() runs uv_library_shutdown, a pool thread comes back from its
+  // recorded condition wait, and the driver aborts on "Missing ordered lock
+  // info". So a process that has finished its recording leaves here.
+  if (recordreplay::IsRecordingFinished()) {
+    ResetStdio();
+    fflush(nullptr);
+    std::_Exit(static_cast<int>(*exit_code));
+  }
+#endif
 
 #if defined(LEAK_SANITIZER)
   __lsan_do_leak_check();
