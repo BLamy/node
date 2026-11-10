@@ -181,6 +181,22 @@ void* OS::AllocateShared(void* hint, size_t size, MemoryPermission access,
   return reinterpret_cast<void*>(addr);
 }
 
+namespace {
+
+// v8::recordreplay::IsRecordingOrReplaying is defined in V8's API, which the
+// build's own tools (torque, mksnapshot's helpers) don't link, and on macOS
+// the linker takes this whole object file into them and wants the symbol. So
+// it's looked up when first needed. A tool has no such symbol and is never
+// recording, and node exports it with the rest of V8's API.
+bool RecordReplayIsRecordingOrReplaying() {
+  using Fn = bool (*)(const char*, const char*);
+  static const Fn fn = reinterpret_cast<Fn>(dlsym(
+      RTLD_DEFAULT, "_ZN2v812recordreplay22IsRecordingOrReplayingEPKcS2_"));
+  return fn != nullptr && fn(nullptr, nullptr);
+}
+
+}  // namespace
+
 // static
 bool OS::RemapPages(const void* address, size_t size, void* new_address,
                     MemoryPermission access) {
@@ -188,7 +204,7 @@ bool OS::RemapPages(const void* address, size_t size, void* new_address,
   // relative to the embedded builtins, which differs between recording and
   // replaying, so report no support and leave it copying the builtins instead
   // (the same as the Linux implementation does, see there).
-  if (v8::recordreplay::IsRecordingOrReplaying()) {
+  if (RecordReplayIsRecordingOrReplaying()) {
     return false;
   }
 
