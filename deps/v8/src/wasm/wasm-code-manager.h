@@ -149,7 +149,7 @@ class V8_EXPORT_PRIVATE DisjointAllocationPool final {
 
 class V8_EXPORT_PRIVATE WasmCode final {
  public:
-  enum Kind {
+  enum Kind : uint8_t {
     kFunction,
     kWasmToCapiWrapper,
     kWasmToJsWrapper,

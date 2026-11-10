@@ -920,7 +920,7 @@ class SloppyBlockFunctionStatement final : public Statement {
 
 class Literal final : public Expression {
  public:
-  enum Type {
+  enum Type : uint8_t {
     kSmi,
     kHeapNumber,
     kBigInt,
