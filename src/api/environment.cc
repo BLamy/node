@@ -1,4 +1,6 @@
 #include <cstdlib>
+#include <cstdio>
+#include <cstdlib>
 #if HAVE_OPENSSL
 #include "crypto/crypto_util.h"
 #endif  // HAVE_OPENSSL
@@ -1010,6 +1012,18 @@ extern void RecordReplayFinishRecording();
 
 void DefaultProcessExitHandlerInternal(Environment* env, ExitCode exit_code) {
   RecordReplayFinishRecording();
+#if defined(__APPLE__)
+  // On macOS, once the recording is finished the driver has let go of what its
+  // intercepted calls use, and the rest of exit still wakes threads that make
+  // them: exit() runs uv_library_shutdown, a pool thread comes back from its
+  // recorded condition wait, and the driver aborts on "Missing ordered lock
+  // info". So a process that has finished its recording leaves here.
+  if (recordreplay::IsRecordingFinished()) {
+    ResetStdio();
+    fflush(nullptr);
+    std::_Exit(static_cast<int>(exit_code));
+  }
+#endif
   env->set_stopping(true);
   env->set_can_call_into_js(false);
   env->stop_sub_worker_contexts();
