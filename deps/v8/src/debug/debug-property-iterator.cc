@@ -6,8 +6,10 @@
 
 #include "src/api/api-inl.h"
 #include "src/base/flags.h"
+#include "src/objects/api-callbacks-inl.h"
 #include "src/objects/js-array-buffer-inl.h"
 #include "src/objects/keys.h"
+#include "src/objects/lookup-inl.h"
 #include "src/objects/property-descriptor.h"
 #include "src/objects/property-details.h"
 
@@ -140,6 +142,31 @@ v8::Maybe<v8::PropertyAttribute> DebugPropertyIterator::attributes() {
 v8::Maybe<v8::debug::PropertyDescriptor> DebugPropertyIterator::descriptor() {
   DirectHandle<JSReceiver> receiver =
       PrototypeIterator::GetCurrent<JSReceiver>(prototype_iterator_);
+
+  // A lazy data property computes its value the first time it's read, by
+  // running the embedder's code: Node loads a module for each lazy global.
+  // The recording has none of what that code does, so when replaying a
+  // property the program never read is described without its value.
+  if (recordreplay::IsReplaying()) {
+    PropertyKey key(isolate_, raw_name());
+    LookupIterator it(isolate_, receiver, key, receiver,
+                      LookupIterator::OWN_SKIP_INTERCEPTOR);
+    if (it.state() == LookupIterator::ACCESSOR) {
+      DirectHandle<Object> accessors = it.GetAccessors();
+      if (IsAccessorInfo(*accessors) &&
+          Cast<AccessorInfo>(*accessors)->replace_on_access()) {
+        PropertyAttributes attributes = it.property_attributes();
+        return Just(v8::debug::PropertyDescriptor{
+            !(attributes & DONT_ENUM), true,
+            !(attributes & DONT_DELETE), true,
+            !(attributes & READ_ONLY), true,
+            Utils::ToLocal(isolate_->factory()->undefined_value()),
+            v8::Local<v8::Value>(), /* get */
+            v8::Local<v8::Value>(), /* set */
+        });
+      }
+    }
+  }
 
   PropertyDescriptor descriptor;
   Maybe<bool> did_get_descriptor = JSReceiver::GetOwnPropertyDescriptor(
