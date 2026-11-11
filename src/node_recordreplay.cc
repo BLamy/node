@@ -6,9 +6,12 @@
 #include "node.h"
 #include "node_external_reference.h"
 #include "node_internals.h"
+#include "node_record_replay_protocol.h"
+#include "node_version.h"
 #include "replayio.h"
 #include "util-inl.h"
 #include "v8-inspector.h"
+#include "v8-version.h"
 #include "v8.h"
 
 #include <dlfcn.h>
@@ -55,6 +58,7 @@ static void (*gRecordReplaySaveRecording)(const char* dir);
 static void (*gRecordReplayRememberRecording)();
 static void (*gRecordReplayAddMetadata)(const char* metadata);
 static void (*gRecordReplayFinishRecording)();
+static void (*gRecordReplayPrepareForImmediateExit)();
 static void (*gBeginCallbackRegion)();
 static void (*gEndCallbackRegion)();
 static void (*gMarkNextDlopenAsAddon)(const char* name);
@@ -179,6 +183,36 @@ extern char gBuildId[];
 extern char gRecordReplayDriver[];
 extern int gRecordReplayDriverSize;
 
+extern "C" void OPENSSL_cpuid_setup(void);
+
+static ReplayNodeRuntimeDescriptor CompiledNodeRuntimeDescriptor() {
+  return {sizeof(ReplayNodeRuntimeDescriptor), REPLAY_NODE_RUNTIME_PROTOCOL,
+          NODE_MAJOR_VERSION, NODE_MINOR_VERSION, NODE_PATCH_VERSION,
+          NODE_MODULE_VERSION, V8_MAJOR_VERSION,
+          NODE_API_SUPPORTED_VERSION_MAX};
+}
+
+// The packaging tool can inspect native capabilities without starting capture
+// or evaluating application JavaScript.
+void PrintRecordReplayRuntimeInfo() {
+  const auto runtime = CompiledNodeRuntimeDescriptor();
+  printf("{\"schema\":1,\"kind\":\"node\",\"version\":\"%u.%u.%u\","
+         "\"moduleABI\":%u,\"v8Major\":%u,\"napiVersion\":%u,"
+         "\"nativeProtocol\":%u,\"strategy\":\"%s\",\"buildId\":\"%s\","
+         "\"needsExitAdapter\":%s}\n",
+         runtime.major, runtime.minor, runtime.patch, runtime.moduleABI,
+         runtime.v8Major, runtime.napiVersion, runtime.protocol,
+         ReplayNodeRuntimeStrategyName(runtime.major), gBuildId,
+         ReplayNodeRuntimeNeedsExitAdapter(runtime.major) ? "true" : "false");
+}
+
+// Called by the exit handler once the recording has been finished.
+void RecordReplayPrepareForImmediateExit() {
+  if (gRecordReplayPrepareForImmediateExit) {
+    gRecordReplayPrepareForImmediateExit();
+  }
+}
+
 static std::string GetRecordingMetadata(int argc, char** argv) {
   std::vector<void*> handles;
   for (int i = 1; i < argc; i++) {
@@ -264,7 +298,22 @@ void InitializeRecordReplay(int* pargc, char*** pargv) {
 
   if (!handle) {
     fprintf(stderr, "Loading Record Replay driver failed (%s).\n", dlerror());
-    return;
+    exit(78);
+  }
+
+  // Node 16 keeps compatibility with existing drivers. Newer Node strategies
+  // require the explicit version/ABI handshake before any recording starts.
+  ReplayConfigureNodeRuntime configureNode = nullptr;
+  if (void* symbol = dlsym(handle, "RecordReplayConfigureNodeRuntime")) {
+    configureNode = reinterpret_cast<ReplayConfigureNodeRuntime>(symbol);
+  }
+  const ReplayNodeRuntimeDescriptor runtime = CompiledNodeRuntimeDescriptor();
+  const char* refusal = configureNode ? configureNode(&runtime) :
+    (ReplayNodeRuntimeAllowsLegacyDriver(NODE_MAJOR_VERSION) ? nullptr :
+      "This Node version requires a version-aware Replay driver");
+  if (refusal) {
+    fprintf(stderr, "Replay Node runtime refused: %s\n", refusal);
+    exit(78);
   }
 
   RecordReplayLoadSymbol(handle, "RecordReplayAttach", gRecordReplayAttach);
@@ -276,6 +325,8 @@ void InitializeRecordReplay(int* pargc, char*** pargv) {
   RecordReplayLoadSymbol(handle, "RecordReplayRememberRecording", gRecordReplayRememberRecording);
   RecordReplayLoadSymbol(handle, "RecordReplayAddMetadata", gRecordReplayAddMetadata);
   RecordReplayLoadSymbol(handle, "RecordReplayFinishRecording", gRecordReplayFinishRecording);
+  RecordReplayLoadSymbol(handle, "RecordReplayPrepareForImmediateExit",
+                         gRecordReplayPrepareForImmediateExit);
   RecordReplayLoadSymbol(handle, "RecordReplayGetRecordingId", gRecordReplayGetRecordingId);
   RecordReplayLoadSymbol(handle, "RecordReplayGetUnusableRecordingReason", gGetUnusableRecordingReason);
   RecordReplayLoadSymbol(handle, "RecordReplayBeginCallbackRegion", gBeginCallbackRegion);
@@ -293,6 +344,9 @@ void InitializeRecordReplay(int* pargc, char*** pargv) {
     gRecordReplayAttach(gBuildId);
     gRecordReplayRecordCommandLineArguments(pargc, pargv);
     v8::recordreplay::SetRecordingOrReplaying(handle);
+    if (ReplayNodeRuntimeDefersCryptoInitialization(runtime.major)) {
+      OPENSSL_cpuid_setup();
+    }
 
     if (gRecordReplaySaveRecording) {
       gRecordReplaySaveRecording(nullptr);

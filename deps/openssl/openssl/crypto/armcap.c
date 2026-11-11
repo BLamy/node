@@ -62,7 +62,11 @@ uint32_t OPENSSL_rdtsc(void)
 
 /* First determine if getauxval() is available (OSSL_IMPLEMENT_GETAUXVAL) */
 
-#if defined(__GNUC__) && __GNUC__ >= 2
+/* Replay Node initializes macOS ARM crypto after attaching its driver, so
+ * sysctl and signal-mask probes are recorded and replayed. OpenSSL's normal
+ * lazy initialization still handles unrecorded Node processes. */
+#if defined(__GNUC__) && __GNUC__ >= 2 && \
+    !(defined(__APPLE__) && defined(__aarch64__))
 void OPENSSL_cpuid_setup(void) __attribute__((constructor));
 #endif
 
