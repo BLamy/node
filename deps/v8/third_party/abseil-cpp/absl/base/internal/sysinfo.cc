@@ -159,6 +159,11 @@ static int GetNumCPUs() {
   return hardware_concurrency ? hardware_concurrency : 1;
 #elif defined(_AIX)
   return sysconf(_SC_NPROCESSORS_ONLN);
+#elif defined(__APPLE__)
+  // For record/replay, as on Linux below. std::thread::hardware_concurrency()
+  // is in libc++, and the libc++ a replay loads isn't the system's that the
+  // recording ran with: one asks with sysctlbyname and the other with sysconf.
+  return static_cast<int>(sysconf(_SC_NPROCESSORS_ONLN));
 #elif defined(__linux__)
   // One of the possibilities listed below, chosen for record/replay:
   // libstdc++'s std::thread::hardware_concurrency() calls get_nprocs(), which
