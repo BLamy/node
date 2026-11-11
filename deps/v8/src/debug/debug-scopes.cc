@@ -450,7 +450,9 @@ bool ScopeIterator::RecordReplayClosureContextNotPushed() const {
       !recordreplay::FeatureEnabled("force-variable-context-allocation")) {
     return false;
   }
-  return current_scope_ == closure_scope_ &&
+  // An iterator made for a function value, rather than a frame, parses
+  // nothing and has no scopes.
+  return current_scope_ && current_scope_ == closure_scope_ &&
          current_scope_->is_function_scope() && !function_.is_null() &&
          current_scope_->NeedsContext() && function_->context() == *context_;
 }
