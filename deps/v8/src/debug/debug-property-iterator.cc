@@ -151,6 +151,10 @@ v8::Maybe<v8::debug::PropertyDescriptor> DebugPropertyIterator::descriptor() {
     PropertyKey key(isolate_, raw_name());
     LookupIterator it(isolate_, receiver, key, receiver,
                       LookupIterator::OWN_SKIP_INTERCEPTOR);
+    // The global proxy checks access before it gets to the global object.
+    if (it.state() == LookupIterator::ACCESS_CHECK && it.HasAccess()) {
+      it.Next();
+    }
     if (it.state() == LookupIterator::ACCESSOR) {
       DirectHandle<Object> accessors = it.GetAccessors();
       if (IsAccessorInfo(*accessors) &&
