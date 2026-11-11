@@ -1180,6 +1180,7 @@ bool CanEnableWebAssemblyTrapHandler() {
 extern char gBuildId[];
 void InitializeRecordReplay(int* pargc, char*** pargv);
 void ApplyRecordReplayMaxOldSpace();
+void PrintRecordReplayRuntimeInfo();
 static std::shared_ptr<InitializationResultImpl>
 InitializeOncePerProcessInternal(const std::vector<std::string>& args,
                                  ProcessInitializationFlags::Flags flags =
@@ -1777,6 +1778,12 @@ static ExitCode StartInternal(int argc, char** argv) {
 }
 
 int Start(int argc, char** argv) {
+  // What packages this runtime asks what it is, without starting a recording
+  // or running any JavaScript.
+  if (argc == 2 && !strcmp(argv[1], "--record-replay-runtime-info")) {
+    PrintRecordReplayRuntimeInfo();
+    return 0;
+  }
 #ifndef DISABLE_SINGLE_EXECUTABLE_APPLICATION
   std::vector<std::string> errors;
   std::tie(argc, argv) = sea::FixupArgsForSEA(argc, argv, &errors);

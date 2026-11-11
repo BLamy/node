@@ -195,3 +195,6 @@ compile_commands.json
 .devcontainer/**
 !.devcontainer/base/
 !.devcontainer/base/devcontainer.json
+
+# Generated from the shared Node runtime protocol.
+/src/node_record_replay_protocol.h

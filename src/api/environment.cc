@@ -1191,6 +1191,7 @@ ThreadId AllocateEnvironmentThreadId() {
 }
 
 extern void RecordReplayFinishRecording();
+extern void RecordReplayPrepareForImmediateExit();
 
 void DefaultProcessExitHandlerInternal(Environment* env, ExitCode exit_code) {
   RecordReplayFinishRecording();
@@ -1201,6 +1202,7 @@ void DefaultProcessExitHandlerInternal(Environment* env, ExitCode exit_code) {
   // recorded condition wait, and the driver aborts on "Missing ordered lock
   // info". So a process that has finished its recording leaves here.
   if (recordreplay::IsRecordingFinished()) {
+    RecordReplayPrepareForImmediateExit();
     ResetStdio();
     fflush(nullptr);
     std::_Exit(static_cast<int>(exit_code));
